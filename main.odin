@@ -6,61 +6,67 @@ import "core:fmt"
 
 TRAIN: [][3]f32 = {
 	{0, 0, 0},
-	{0, 1, 1},
-	{1, 0, 1},
-	{1, 1, 0},
+	{0, 1, 0},
+	{1, 0, 0},
+	{1, 1, 1},
 }
 
 D  :: 0.001
 LR :: 0.1  // learning rate
 
 main :: proc() {
-	w1 := rand.float32()
-	w2 := rand.float32()
-	w3 := rand.float32()
-	w4 := rand.float32()
-	b1 := rand.float32()
-	b2 := rand.float32()
+	w := mat_make(2, 1)
+	mat_rand(w)
+	b := mat_make(1, 1)
+	mat_rand(b)
 
-	w5 := rand.float32()
-	w6 := rand.float32()
-	b3 := rand.float32()
-
+	dw := mat_make(2, 1)  // same dim as w
+	db := mat_make(1, 1)  // same dim as b
 	for _ in 0..<1000*100 {
-		l  := loss(w1, w2, w3, w4, b1, b2, w5, w6, b3)
-
-		dw1 := (loss(w1+D, w2,   w3,   w4,   b1,   b2,   w5, w6, b3) - l) / D
-		dw2 := (loss(w1,   w2+D, w3,   w4,   b1,   b2,   w5, w6, b3) - l) / D
-		dw3 := (loss(w1,   w2,   w3+D, w4,   b1,   b2,   w5, w6, b3) - l) / D
-		dw4 := (loss(w1,   w2,   w3,   w4+D, b1,   b2,   w5, w6, b3) - l) / D
-		db1 := (loss(w1,   w2,   w3,   w4,   b1+D, b2,   w5, w6, b3) - l) / D
-		db2 := (loss(w1,   w2,   w3,   w4,   b1,   b2+D, w5, w6, b3) - l) / D
-
-		dw5 := (loss(w1, w2, w3, w4, b1, b2, w5+D, w6,   b3  ) - l) / D
-		dw6 := (loss(w1, w2, w3, w4, b1, b2, w5,   w6+D, b3  ) - l) / D
-		db3 := (loss(w1, w2, w3, w4, b1, b2, w5,   w6,   b3+D) - l) / D
-
-		w1 -= LR*dw1
-		w2 -= LR*dw2
-		w3 -= LR*dw3
-		w4 -= LR*dw4
-		b1 -= LR*db1
-		b2 -= LR*db2
-
-		w5 -= LR*dw5
-		w6 -= LR*dw6
-		b3 -= LR*db3
+		l := loss(w, b)
+		// l  := loss(w1, w2, w3, w4, b1, b2, w5, w6, b3)
+		for &d, idx in w.data {
+			d += D
+			defer d -= D
+			dw.data[idx] = (loss(w, b)-l) / D
+		}
+		// dw1 := (loss(w1+D, w2,   w3,   w4,   b1,   b2,   w5, w6, b3) - l) / D
+		for &d, idx in b.data {
+			d += D
+			defer d -= D
+			db.data[idx] = (loss(w, b)-l) / D
+		}
+		
+		// w1 -= LR*dw1
+		for &d, idx in w.data {
+			d -= dw.data[idx]*LR
+		}
+		for &d, idx in b.data {
+			d -= db.data[idx]*LR
+		}
 	}
 
 	for tr in TRAIN {
-		fmt.println(tr, calc(tr[0], tr[1], w1, w2, w3, w4, b1, b2, w5, w6, b3))
+		a := mat_make(1, 2)
+		a.data[0] = tr[0]
+		a.data[1] = tr[1]
+		o := mat_make(1, 1)
+		mat_calc(a, w, b, o)
+		fmt.println(tr, o.data[0])
+		// fmt.println(tr, calc(tr[0], tr[1], w1, w2, w3, w4, b1, b2, w5, w6, b3))
 	}
 }
 
-loss :: proc(w1, w2, w3, w4, b1, b2, w5, w6, b3: f32) -> (total_cost: f32) {
+loss :: proc(w, b: Matrix) -> (total_cost: f32) {
+	// o := mat_make(w.rows, b.cols)
+	o := mat_make(1, 1)
 	for tr in TRAIN {
-		c := calc(tr[0], tr[1], w1, w2, w3, w4, b1, b2, w5, w6, b3)
-		total_cost += cost(tr[2], c)
+		a := mat_make(1, 2)
+		a.data[0] = tr[0]
+		a.data[1] = tr[1]
+		mat_calc(a, w, b, o)
+		// c := calc(tr[0], tr[1], w1, w2, w3, w4, b1, b2, w5, w6, b3)
+		total_cost += cost(tr[2], o.data[0])
 	}
 	return
 
@@ -69,15 +75,31 @@ loss :: proc(w1, w2, w3, w4, b1, b2, w5, w6, b3: f32) -> (total_cost: f32) {
 	}
 }
 
+mat_calc :: proc(a, w, b, o: Matrix) {
+	mat_mul(a, w, o)
+	mat_add(o, b, o)
+	mat_act(o)
+}
+
+mat_act :: proc(a: Matrix) {
+	for &d in a.data {
+		d = activation(d)
+	}
+}
+
+mat_rand :: proc(a: Matrix) {
+	for &d in a.data {
+		d = rand.float32()
+	}
+}
 
 calc :: proc(a1, a2, w1, w2, w3, w4, b1, b2, w5, w6, b3: f32) -> (c: f32) {
 	a3 := activation(a1*w1 + a2*w3 + b1)
 	a4 := activation(a1*w2 + a2*w4 + b2)
 	c   = activation(a3*w5 + a4*w6 + b3)
 	return
-
-	activation :: proc(x: f32) -> f32 {
-		return 1/(1+math.exp(-x))
-	}
 }
 
+activation :: proc(x: f32) -> f32 {
+	return 1/(1+math.exp(-x))
+}
