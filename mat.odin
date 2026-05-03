@@ -1,5 +1,6 @@
-// note: claude-generated /shrug
+#+vet explicit-allocators
 package main
+// note: claude-generated /shrug
 
 import "core:fmt"
 Matrix :: struct {
@@ -16,8 +17,8 @@ mat_make :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
 	}
 }
 
-mat_free :: proc(m: Matrix) {
-	delete(m.data)
+mat_free :: proc(m: Matrix, allocator := context.allocator) {
+	delete(m.data, allocator)
 }
 
 mat_get :: proc(m: Matrix, r, c: int) -> f32 {
@@ -37,8 +38,6 @@ mat_add :: proc(a, b: Matrix, c: Matrix) {
 }
 
 mat_mul :: proc(a, b: Matrix, c: Matrix, loc := #caller_location) {
-    // assert(a.cols == b.rows, loc=loc)
-    // assert(c.rows == a.rows && c.cols == b.cols, loc=loc)
     assert_eq(a.cols, b.rows, loc=loc)
     assert_eq(c.rows, a.rows, loc=loc)
     assert_eq(c.cols, b.cols, loc=loc)
