@@ -38,25 +38,23 @@ main :: proc() {
 	db2 := mat_make(b2.rows, b2.cols)
 	l2 := mat_make(b2.rows, b2.cols)
 
-	o := mat_make(VEC, VEC)
-
-	for _ in 0..<1000*100 {
-		l := loss(w1, b1, w2, b2, o, a, l1, l2)
+	for _ in 0..<1000*50 {
+		l := loss(w1, b1, w2, b2, a, l1, l2)
 		for &d, idx in w1.data {
 			d += D; defer d -= D
-			dw1.data[idx] = (loss(w1, b1, w2, b2, o, a, l1, l2)-l) / D
+			dw1.data[idx] = (loss(w1, b1, w2, b2, a, l1, l2)-l) / D
 		}
 		for &d, idx in b1.data {
 			d += D; defer d -= D
-			db1.data[idx] = (loss(w1, b1, w2, b2, o, a, l1, l2)-l) / D
+			db1.data[idx] = (loss(w1, b1, w2, b2, a, l1, l2)-l) / D
 		}
 		for &d, idx in w2.data {
 			d += D; defer d -= D
-			dw2.data[idx] = (loss(w1, b1, w2, b2, o, a, l1, l2)-l) / D
+			dw2.data[idx] = (loss(w1, b1, w2, b2, a, l1, l2)-l) / D
 		}
 		for &d, idx in b2.data {
 			d += D; defer d -= D
-			db2.data[idx] = (loss(w1, b1, w2, b2, o, a, l1, l2)-l) / D
+			db2.data[idx] = (loss(w1, b1, w2, b2, a, l1, l2)-l) / D
 		}
 		for &d, idx in w1.data {
 			d -= dw1.data[idx]*LR
@@ -76,36 +74,29 @@ main :: proc() {
 		a := mat_make(1, 2)
 		a.data[0] = tr[0]
 		a.data[1] = tr[1]
-		o := mat_make(1, 1)
-		mat_calc(a, w1, b1, w2, b2, o, l1, l2)
-		fmt.println(tr, o.data[0])
-		// fmt.println(tr, calc(tr[0], tr[1], w1, w2, w3, w4, b1, b2, w5, w6, b3))
+		mat_calc(a, w1, b1, w2, b2, l1, l2)
+		fmt.println(tr, l2.data[0])
 	}
 }
 
-layer :: proc(a, w, b, o: Matrix) {
-	// o = mat_make(b.rows, b.cols)
-	assert_eq(o.rows, b.rows); assert_eq(o.cols, b.cols)
-	// fmt.println(a, w, b, o)
-	mat_mul(a, w, o)
-	mat_add(o, b, o)
-	mat_act(o)
+layer :: proc(a, w, b, l: Matrix) {
+	assert_eq(l.rows, b.rows); assert_eq(l.cols, b.cols)
+
+	mat_mul(a, w, l)
+	mat_add(l, b, l)
+	mat_act(l)
 	return
 }
 
-loss :: proc(w1, b1, w2, b2, o, a, l1, l2: Matrix) -> (total_cost: f32) {
-	// o := mat_make(w.rows, b.cols)
-	// o := mat_make(1, 1)
-	assert_eq(o.rows, 1); assert_eq(o.cols, 1)
+loss :: proc(w1, b1, w2, b2, a, l1, l2: Matrix) -> (total_cost: f32) {
 	assert_eq(a.rows, 1); assert_eq(a.cols, 2)
 	assert_eq(l1.rows, b1.rows); assert_eq(l1.cols, b1.cols)
 	assert_eq(l2.rows, b2.rows); assert_eq(l2.cols, b2.cols)
+
 	for tr in TRAIN {
-		// a := mat_make(1, 2)
 		a.data[0] = tr[0]; a.data[1] = tr[1]
-		mat_calc(a, w1, b1, w2, b2, o, l1, l2)
-		// c := calc(tr[0], tr[1], w1, w2, w3, w4, b1, b2, w5, w6, b3)
-		total_cost += cost(tr[2], o.data[0])  // safe
+		mat_calc(a, w1, b1, w2, b2, l1, l2)
+		total_cost += cost(tr[2], l2.data[0])  // safe
 	}
 	return
 
@@ -114,18 +105,12 @@ loss :: proc(w1, b1, w2, b2, o, a, l1, l2: Matrix) -> (total_cost: f32) {
 	}
 }
 
-mat_calc :: proc(a, w1, b1, w2, b2, o, l1, l2: Matrix) {
-	// mat_mul(a, w1, o)
-	// mat_add(o, b1, o)
-	// mat_act(o)
-	// l1 := mat_make(b1.rows, b1.cols)
+mat_calc :: proc(a, w1, b1, w2, b2, l1, l2: Matrix) {
 	assert_eq(l1.rows, b1.rows); assert_eq(l1.cols, b1.cols)
-	layer(a, w1, b1, l1)
-	// l2 := mat_make(b2.rows, b2.cols)
 	assert_eq(l2.rows, b2.rows); assert_eq(l2.cols, b2.cols)
+
+	layer(a, w1, b1, l1)
 	layer(l1, w2, b2, l2)
-	assert_eq(o.rows, l2.rows); assert_eq(o.cols, l2.cols)
-	copy(o.data, l2.data)
 }
 
 mat_act :: proc(a: Matrix) {
