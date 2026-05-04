@@ -25,20 +25,20 @@ main :: proc() {
 	a := mat_make(VEC, INPUTS)
 
 	w1 := mat_make(INPUTS, MIDDLES); mat_rand(w1)
-	dw1 := mat_make(w1.rows, w1.cols)
+	dw1 := mat_make_from(w1)
 
 	b1 := mat_make(VEC, MIDDLES); mat_rand(b1)
-	db1 := mat_make(b1.rows, b1.cols)
-	l1 := mat_make(b1.rows, b1.cols)
+	db1 := mat_make_from(b1)
+	l1  := mat_make_from(b1)
 
 	w2 := mat_make(MIDDLES, OUTPUTS); mat_rand(w2)
-	dw2 := mat_make(w2.rows, w2.cols)
+	dw2 := mat_make_from(w2)
 
 	b2 := mat_make(VEC, OUTPUTS); mat_rand(b2)
-	db2 := mat_make(b2.rows, b2.cols)
-	l2 := mat_make(b2.rows, b2.cols)
+	db2 := mat_make_from(b2)
+	l2  := mat_make_from(b2)
 
-	for _ in 0..<1000*50 {
+	for _ in 0..<1000*100 {
 		l := loss(w1, b1, w2, b2, a, l1, l2)
 		for &d, idx in w1.data {
 			d += D; defer d -= D

@@ -17,6 +17,10 @@ mat_make :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
 	}
 }
 
+mat_make_from :: proc(m: Matrix, allocator := context.allocator) -> Matrix {
+    return mat_make(m.rows, m.cols, allocator)
+}
+
 mat_free :: proc(m: Matrix, allocator := context.allocator) {
 	delete(m.data, allocator)
 }
