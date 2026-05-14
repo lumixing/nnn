@@ -41,6 +41,42 @@ make_layer :: proc(inputs, outputs: int) -> Layer {
 	}
 }
 
+layer_dlast :: proc(l, lprev: ^Layer, target: Matrix) {
+	// ∂cost/∂l2 = 2(l2 - target)
+	mat_sub(l.l, target, l.dl)
+	mat_scale(l.dl, 2, l.dl)
+	// ∂cost/∂z2 = ∂cost/∂l2 ⊙ (l2 ⊙ (1 - l2))
+	mat_neg(l.l, l.z)
+	mat_offset(l.z, 1, l.z)
+	mat_el_mul(l.z, l.l, l.z)
+	mat_el_mul(l.dl, l.z, l.dz)
+	// ∂cost/∂w2 = a1ᵀ · ∂cost/∂z2
+	mat_mul(mat_transpose(lprev.l), l.dz, l.dw)
+	// ∂cost/∂b2 = ∂cost/∂z2
+	mat_copy(l.dz, l.db)
+}
+
+layer_d :: proc(l, lnext: ^Layer, input: Matrix) {
+	// ∂cost/∂a1 = ∂cost/∂z2 · w2ᵀ
+	mat_mul(lnext.dz, mat_transpose(lnext.w), l.dl)
+	// ∂cost/∂z1 = ∂cost/∂a1 ⊙ (a1 ⊙ (1 - a1))
+	mat_neg(l.l, l.z)
+	mat_offset(l.z, 1, l.z)
+	mat_el_mul(l.z, l.l, l.z)
+	mat_el_mul(l.dl, l.z, l.dz)
+	// ∂cost/∂w1 = aᵀ · ∂cost/∂z1
+	mat_mul(mat_transpose(input), l.dz, l.dw)
+	// ∂cost/∂b1 = ∂cost/∂z1
+	mat_copy(l.dz, l.db)
+}
+
+layer_learn :: proc(l: ^Layer) {
+	mat_scale(l.dw, LR, l.dw)
+	mat_scale(l.db, LR, l.db)
+	mat_sub(l.w, l.dw, l.w)
+	mat_sub(l.b, l.db, l.b)
+}
+
 main :: proc() {
 	a := mat_make(VEC, INPUTS)
 
@@ -55,42 +91,13 @@ main :: proc() {
 			input.data[0] = tr[0]
 			input.data[1] = tr[1]
 			mat_calc(input, l1, l2)
-			
-			// ∂cost/∂l2 = 2(l2 - target)
+
 			target.data[0] = tr[2]
-			mat_sub(l2.l, target, l2.dl)
-			mat_scale(l2.dl, 2, l2.dl)
-			// ∂cost/∂z2 = ∂cost/∂l2 ⊙ (l2 ⊙ (1 - l2))
-			mat_neg(l2.l, l2.z)
-			mat_offset(l2.z, 1, l2.z)
-			mat_el_mul(l2.z, l2.l, l2.z)
-			mat_el_mul(l2.dl, l2.z, l2.dz)
-			// ∂cost/∂w2 = a1ᵀ · ∂cost/∂z2
-			mat_mul(mat_transpose(l1.l), l2.dz, l2.dw)
-			// ∂cost/∂b2 = ∂cost/∂z2
-			mat_copy(l2.dz, l2.db)
+			layer_dlast(&l2, &l1, target)
+			layer_d(&l1, &l2, input)
 
-			// ∂cost/∂a1 = ∂cost/∂z2 · w2ᵀ
-			mat_mul(l2.dz, mat_transpose(l2.w), l1.dl)
-			// ∂cost/∂z1 = ∂cost/∂a1 ⊙ (a1 ⊙ (1 - a1))
-			mat_neg(l1.l, l1.z)
-			mat_offset(l1.z, 1, l1.z)
-			mat_el_mul(l1.z, l1.l, l1.z)
-			mat_el_mul(l1.dl, l1.z, l1.dz)
-			// ∂cost/∂w1 = aᵀ · ∂cost/∂z1
-			mat_mul(mat_transpose(input), l1.dz, l1.dw)
-			// ∂cost/∂b1 = ∂cost/∂z1
-			mat_copy(l1.dz, l1.db)
-
-			mat_scale(l2.dw, LR, l2.dw)
-			mat_scale(l2.db, LR, l2.db)
-			mat_scale(l1.dw, LR, l1.dw)
-			mat_scale(l1.db, LR, l1.db)
-
-			mat_sub(l2.w, l2.dw, l2.w)
-			mat_sub(l2.b, l2.db, l2.b)
-			mat_sub(l1.w, l1.dw, l1.w)
-			mat_sub(l1.b, l1.db, l1.b)
+			layer_learn(&l1)
+			layer_learn(&l2)
 		}
 	}
 
