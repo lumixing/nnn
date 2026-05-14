@@ -3,10 +3,19 @@ package main
 // note: claude-generated /shrug
 
 import "core:fmt"
+
 Matrix :: struct {
 	data: []f32,
 	rows: int,
 	cols: int,
+}
+
+mat_transpose :: proc(a: Matrix) -> Matrix {
+    return {
+        data = a.data,
+        rows = a.cols,
+        cols = a.rows,
+    }
 }
 
 mat_make :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
@@ -41,10 +50,80 @@ mat_add :: proc(a, b: Matrix, c: Matrix) {
     }
 }
 
-mat_mul :: proc(a, b: Matrix, c: Matrix, loc := #caller_location) {
-    assert_eq(a.cols, b.rows, loc=loc)
+mat_el_mul :: proc(a, b: Matrix, c: Matrix) {
+    assert(a.rows == b.rows && a.cols == b.cols, "mat_el_mul: shape mismatch")
+    assert(c.rows == a.rows && c.cols == a.cols, "mat_el_mul: output size mismatch")
+    for i in 0..<len(a.data) {
+        c.data[i] = a.data[i] * b.data[i]
+    }
+}
+
+mat_sub :: proc(a, b: Matrix, c: Matrix) {
+    assert(a.rows == b.rows && a.cols == b.cols, "mat_sub: shape mismatch")
+    assert(c.rows == a.rows && c.cols == a.cols, "mat_sub: output size mismatch")
+    for i in 0..<len(a.data) {
+        c.data[i] = a.data[i] - b.data[i]
+    }
+}
+
+mat_offset :: proc(a: Matrix, b: f32, c: Matrix) {
+    assert(c.rows == a.rows && c.cols == a.cols, "mat_offset: output size mismatch")
+    for i in 0..<len(a.data) {
+        c.data[i] = a.data[i] + b
+    }
+}
+
+mat_scale :: proc(a: Matrix, b: f32, c: Matrix) {
+    assert(c.rows == a.rows && c.cols == a.cols, "mat_scale: output size mismatch")
+    for i in 0..<len(a.data) {
+        c.data[i] = a.data[i] * b
+    }
+}
+
+mat_neg :: proc(a: Matrix, c: Matrix) {
+    assert(c.rows == a.rows && c.cols == a.cols, "mat_neg: output size mismatch")
+    for i in 0..<len(a.data) {
+        c.data[i] = -a.data[i]
+    }
+}
+
+mat_copy :: proc(a: Matrix, c: Matrix) {
+    assert(c.rows == a.rows && c.cols == a.cols, "mat_copy: output size mismatch")
+    for i in 0..<len(a.data) {
+        c.data[i] = a.data[i]
+    }
+}
+
+mat_mul :: proc(
+    a, b, c: Matrix,
+    _a := #caller_expression(a),
+    _b := #caller_expression(b),
+    _c := #caller_expression(c),
+    loc := #caller_location,
+) {
+    // assert_eq(a.cols, b.rows, loc=loc)
+    if a.cols != b.rows {
+        fmt.panicf(
+            "%v.cols(%d) != %v.rows(%d)\n%v=[%d,%d]\n%v=[%d,%d]",
+            _a, a.cols,
+            _b, b.rows,
+            _a, a.rows, a.cols,
+            _b, b.rows, b.cols,
+            loc=loc,
+        )
+    }
     assert_eq(c.rows, a.rows, loc=loc)
-    assert_eq(c.cols, b.cols, loc=loc)
+    // assert_eq(c.cols, b.cols, loc=loc)
+    if c.cols != b.cols {
+        fmt.panicf(
+            "%v.cols(%d) != %v.cols(%d)\n%v=[%d,%d]\n%v=[%d,%d]",
+            _c, c.cols,
+            _b, b.cols,
+            _c, c.rows, c.cols,
+            _b, b.rows, b.cols,
+            loc=loc,
+        )
+    }
     for r in 0..<a.rows {
         for c_col in 0..<b.cols {
             sum: f32 = 0
