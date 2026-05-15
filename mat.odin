@@ -28,7 +28,7 @@ mat_make :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
 	}
 }
 
-// mat_make_random :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
+// mat_make_random_old :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
 // 	c := mat_make(rows, cols, allocator)
 // 	mat_rand(c)
 // 	return c
@@ -60,52 +60,52 @@ mat_set :: #force_inline proc(m: Matrix, r, c: int, val: f32) #no_bounds_check {
 }
 
 mat_add :: #force_inline proc(a, b: Matrix, c: Matrix) #no_bounds_check {
-	// assert(a.rows == b.rows && a.cols == b.cols, "mat_add: shape mismatch")
-	// assert(c.rows == a.rows && c.cols == a.cols, "mat_add: output size mismatch")
+	assert(a.rows == b.rows && a.cols == b.cols, "mat_add: shape mismatch")
+	assert(c.rows == a.rows && c.cols == a.cols, "mat_add: output size mismatch")
 	for i in 0..<len(a.data) {
 		c.data[i] = a.data[i] + b.data[i]
 	}
 }
 
 mat_el_mul :: #force_inline proc(a, b: Matrix, c: Matrix) #no_bounds_check {
-	// assert(a.rows == b.rows && a.cols == b.cols, "mat_el_mul: shape mismatch")
-	// assert(c.rows == a.rows && c.cols == a.cols, "mat_el_mul: output size mismatch")
+	assert(a.rows == b.rows && a.cols == b.cols, "mat_el_mul: shape mismatch")
+	assert(c.rows == a.rows && c.cols == a.cols, "mat_el_mul: output size mismatch")
 	for i in 0..<len(a.data) {
 		c.data[i] = a.data[i] * b.data[i]
 	}
 }
 
 mat_sub :: #force_inline proc(a, b: Matrix, c: Matrix) #no_bounds_check {
-	// assert(a.rows == b.rows && a.cols == b.cols, "mat_sub: shape mismatch")
-	// assert(c.rows == a.rows && c.cols == a.cols, "mat_sub: output size mismatch")
+	assert(a.rows == b.rows && a.cols == b.cols, "mat_sub: shape mismatch")
+	assert(c.rows == a.rows && c.cols == a.cols, "mat_sub: output size mismatch")
 	for i in 0..<len(a.data) {
 		c.data[i] = a.data[i] - b.data[i]
 	}
 }
 
 mat_offset :: #force_inline proc(a: Matrix, b: f32, c: Matrix) #no_bounds_check {
-	// assert(c.rows == a.rows && c.cols == a.cols, "mat_offset: output size mismatch")
+	assert(c.rows == a.rows && c.cols == a.cols, "mat_offset: output size mismatch")
 	for i in 0..<len(a.data) {
 		c.data[i] = a.data[i] + b
 	}
 }
 
 mat_scale :: #force_inline proc(a: Matrix, b: f32, c: Matrix) #no_bounds_check {
-	// assert(c.rows == a.rows && c.cols == a.cols, "mat_scale: output size mismatch")
+	assert(c.rows == a.rows && c.cols == a.cols, "mat_scale: output size mismatch")
 	for i in 0..<len(a.data) {
 		c.data[i] = a.data[i] * b
 	}
 }
 
 mat_neg :: #force_inline proc(a: Matrix, c: Matrix) #no_bounds_check {
-	// assert(c.rows == a.rows && c.cols == a.cols, "mat_neg: output size mismatch")
+	assert(c.rows == a.rows && c.cols == a.cols, "mat_neg: output size mismatch")
 	for i in 0..<len(a.data) {
 		c.data[i] = -a.data[i]
 	}
 }
 
 mat_copy :: #force_inline proc(a: Matrix, c: Matrix) #no_bounds_check {
-	// assert(c.rows == a.rows && c.cols == a.cols, "mat_copy: output size mismatch")
+	assert(c.rows == a.rows && c.cols == a.cols, "mat_copy: output size mismatch")
 	for i in 0..<len(a.data) {
 		c.data[i] = a.data[i]
 	}
@@ -113,34 +113,34 @@ mat_copy :: #force_inline proc(a: Matrix, c: Matrix) #no_bounds_check {
 
 mat_mul :: proc(
 	a, b, c: Matrix,
-	// _a := #caller_expression(a),
-	// _b := #caller_expression(b),
-	// _c := #caller_expression(c),
-	// loc := #caller_location,
+	_a := #caller_expression(a),
+	_b := #caller_expression(b),
+	_c := #caller_expression(c),
+	loc := #caller_location,
 ) #no_bounds_check {
-	// assert_eq(a.cols, b.rows, loc=loc)
-	// if a.cols != b.rows {
-	// 	fmt.panicf(
-	// 		"%v.cols(%d) != %v.rows(%d)\n%v=[%d,%d]\n%v=[%d,%d]",
-	// 		_a, a.cols,
-	// 		_b, b.rows,
-	// 		_a, a.rows, a.cols,
-	// 		_b, b.rows, b.cols,
-	// 		loc=loc,
-	// 	)
-	// }
-	// assert_eq(c.rows, a.rows, loc=loc)
-	// // assert_eq(c.cols, b.cols, loc=loc)
-	// if c.cols != b.cols {
-	// 	fmt.panicf(
-	// 		"%v.cols(%d) != %v.cols(%d)\n%v=[%d,%d]\n%v=[%d,%d]",
-	// 		_c, c.cols,
-	// 		_b, b.cols,
-	// 		_c, c.rows, c.cols,
-	// 		_b, b.rows, b.cols,
-	// 		loc=loc,
-	// 	)
-	// }
+	assert_eq(a.cols, b.rows, loc=loc)
+	if a.cols != b.rows {
+		fmt.panicf(
+			"%v.cols(%d) != %v.rows(%d)\n%v=[%d,%d]\n%v=[%d,%d]",
+			_a, a.cols,
+			_b, b.rows,
+			_a, a.rows, a.cols,
+			_b, b.rows, b.cols,
+			loc=loc,
+		)
+	}
+	assert_eq(c.rows, a.rows, loc=loc)
+	// assert_eq(c.cols, b.cols, loc=loc)
+	if c.cols != b.cols {
+		fmt.panicf(
+			"%v.cols(%d) != %v.cols(%d)\n%v=[%d,%d]\n%v=[%d,%d]",
+			_c, c.cols,
+			_b, b.cols,
+			_c, c.rows, c.cols,
+			_b, b.rows, b.cols,
+			loc=loc,
+		)
+	}
 	for r in 0..<a.rows {
 		for c_col in 0..<b.cols {
 			sum: f32 = 0

@@ -12,7 +12,7 @@ SZ :: 28
 SC :: 20
 
 main :: proc() {
-	wb, err := os.read_entire_file("wb.f32", context.allocator)
+	wb, err := os.read_entire_file("wb60.f32", context.allocator)
 	assert(err == nil)
 	wbf := slice.reinterpret([]f32, wb)
 

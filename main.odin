@@ -126,7 +126,7 @@ main :: proc() {
 	}
 
 	tt := time.now()
-	#no_bounds_check for epoch in 0..<10 {
+	#no_bounds_check for epoch in 0..<60 {
 		if true {
 			correct: int
 			for i in 0..<1000 {  // test on first 1000 images
@@ -183,30 +183,6 @@ layer2 :: proc(a, w, b, z, l: Matrix) #no_bounds_check {
 	return
 }
 
-// loss :: proc(l1, l2, l3: Layer, a: Matrix) -> (total_cost: f32) {
-// 	// assert_eq(a.rows, 1); assert_eq(a.cols, 2)
-// 	assert_eq(l1.l.rows, l1.b.rows); assert_eq(l1.l.cols, l1.b.cols)
-// 	assert_eq(l2.l.rows, l2.b.rows); assert_eq(l2.l.cols, l2.b.cols)
-// 	assert_eq(l3.l.rows, l3.b.rows); assert_eq(l3.l.cols, l3.b.cols)
-
-// 	for tr in 0..<IMGS {
-// 		// a.data[0] = tr[0]; a.data[1] = tr[1]
-// 		// a.data = imgdata[28*28*tr_idx:][:28*28]
-// 		mat_calc(a, l1, l2, l3)
-// 		// total_cost += cost(tr[2], l3.l.data[0])  // safe
-// 		// total_cost += cross_entropy(l3.l, )
-// 	}
-// 	return
-// }
-
-// cost :: proc(a, b: f32) -> f32 {
-// 	return (a-b)*(a-b)
-// }
-
-// cost_derive :: proc(a, b: f32) -> f32 {
-// 	return 2*(a-b)
-// }
-
 mat_calc :: proc(a: Matrix, l1, l2, l3: Layer) #no_bounds_check {
 	// assert_eq(l1.l.rows, l1.b.rows); assert_eq(l1.l.cols, l1.b.cols)
 	// assert_eq(l2.l.rows, l2.b.rows); assert_eq(l2.l.cols, l2.b.cols)
@@ -222,29 +198,6 @@ mat_act :: proc(a: Matrix) #no_bounds_check {
 		d = relu(d)
 	}
 }
-
-// mat_rand :: proc(a: Matrix) {
-// 	for &d in a.data {
-// 		// d = rand.float32()
-// 		d = rand.float32()*2 - 1
-// 	}
-// }
-
-// activation :: proc(x: f32) -> f32 {
-// 	return 1/(1+math.exp(-x))
-// }
-
-// activation_derive :: proc(x: f32) -> f32 {
-// 	return activation(x)*(1-activation(x))
-// }
-
-// relu :: proc(x: f32) -> f32 {
-//     return max(0, x)
-// }
-
-// relu_derive :: proc(x: f32) -> f32 {
-//     return x > 0 ? 1 : 0  // 1 if positive, 0 if negative
-// }
 
 relu :: proc(x: f32) -> f32 {
     return x > 0 ? x : 0.01 * x  // leaky!!
