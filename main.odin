@@ -1,25 +1,18 @@
 // #+vet explicit-allocators
 package main
 
-import "core:math/rand"
+import "core:os"
 import "core:math"
 import "core:fmt"
 
-TRAIN: [][3]f32 = {
-	{0, 0, 0},
-	{0, 1, 1},
-	{1, 0, 1},
-	{1, 1, 0},
-}
-
 D  :: 0.001
-LR :: 0.1  // learning rate
+LR :: 0.001  // learning rate
 
 VEC :: 1
 
-INPUTS :: 2
-MIDDLES :: 2
-OUTPUTS :: 1
+INPUTS :: 28*28
+// MIDDLES :: 2
+OUTPUTS :: 10
 
 Layer :: struct {
 	w, b:   Matrix,
@@ -31,7 +24,7 @@ Layer :: struct {
 make_layer :: proc(inputs, outputs: int) -> Layer {
 	return {
 		w  = mat_make_random(inputs, outputs),
-		b  = mat_make_random(VEC, outputs),
+		b  = mat_make(VEC, outputs),
 		z  = mat_make(VEC, outputs),
 		l  = mat_make(VEC, outputs),
 		dw = mat_make(inputs, outputs),
@@ -42,31 +35,26 @@ make_layer :: proc(inputs, outputs: int) -> Layer {
 }
 
 layer_dlast :: proc(l, lprev: ^Layer, target: Matrix) {
-	// ∂cost/∂l2 = 2(l2 - target)
+	// dl = output - target  (softmax + cross entropy derivative)
 	mat_sub(l.l, target, l.dl)
-	mat_scale(l.dl, 2, l.dl)
-	// ∂cost/∂z2 = ∂cost/∂l2 ⊙ (l2 ⊙ (1 - l2))
-	mat_neg(l.l, l.z)
-	mat_offset(l.z, 1, l.z)
-	mat_el_mul(l.z, l.l, l.z)
-	mat_el_mul(l.dl, l.z, l.dz)
-	// ∂cost/∂w2 = a1ᵀ · ∂cost/∂z2
+	// dz = dl  (softmax absorbs the sigmoid step, so dz = dl)
+	mat_copy(l.dl, l.dz)
+	// dw = lprev.lᵀ · dz
 	mat_mul(mat_transpose(lprev.l), l.dz, l.dw)
-	// ∂cost/∂b2 = ∂cost/∂z2
+	// db = dz
 	mat_copy(l.dz, l.db)
 }
 
 layer_d :: proc(l, lnext: ^Layer, input: Matrix) {
-	// ∂cost/∂a1 = ∂cost/∂z2 · w2ᵀ
+	// dl = lnext.dz · lnext.wᵀ
 	mat_mul(lnext.dz, mat_transpose(lnext.w), l.dl)
-	// ∂cost/∂z1 = ∂cost/∂a1 ⊙ (a1 ⊙ (1 - a1))
-	mat_neg(l.l, l.z)
-	mat_offset(l.z, 1, l.z)
-	mat_el_mul(l.z, l.l, l.z)
-	mat_el_mul(l.dl, l.z, l.dz)
-	// ∂cost/∂w1 = aᵀ · ∂cost/∂z1
+	// dz = dl ⊙ relu'(l)   relu'(x) = 1 if x>0 else 0
+	for i in 0..<l.dz.cols {
+		l.dz.data[i] = l.dl.data[i] * relu_derive(l.z.data[i])
+	}
+	// dw = inputᵀ · dz
 	mat_mul(mat_transpose(input), l.dz, l.dw)
-	// ∂cost/∂b1 = ∂cost/∂z1
+	// db = dz
 	mat_copy(l.dz, l.db)
 }
 
@@ -77,93 +65,218 @@ layer_learn :: proc(l: ^Layer) {
 	mat_sub(l.b, l.db, l.b)
 }
 
+IMGS :: 60_000
+IMGSZ :: 28*28
+
+MAXXX :: 1000*100
+
+imgdata: []f32
+lbldata: []f32
+
 main :: proc() {
-	a := mat_make(VEC, INPUTS)
+	rawimgdata, err := os.read_entire_file("train-images.idx3-ubyte", context.allocator)
+	assert(err == nil)
+	imgdata = make([]f32, IMGSZ*IMGS)
+	for d, idx in rawimgdata[16:] {
+		imgdata[idx] = f32(d)/255.
+	}
+	delete(rawimgdata)
 
-	l1 := make_layer(2, 2)
-	l2 := make_layer(2, 1)
+	rawlbldata, err2 := os.read_entire_file("train-labels.idx1-ubyte", context.allocator)
+	assert(err2 == nil)
+	lbldata = make([]f32, 10*IMGS)
+	for d, idx in rawlbldata[8:] {
+		lbldata[idx*10+int(d)] = 1.
+	}
+	
+	delete(rawlbldata)
 
-	target := mat_make_from(l2.l)
+	// a := mat_make(VEC, INPUTS)
+
+	// 784 → 128 → 64 → 10
+	l1 := make_layer(28*28, 128)
+	l2 := make_layer(128, 64)
+	l3 := make_layer(64, 10)
+
+	target := mat_make_from(l3.l)
 	input := mat_make(VEC, INPUTS)
 
-	for _ in 0..<1000*100 {
-		for tr, tr_idx in TRAIN {
-			input.data[0] = tr[0]
-			input.data[1] = tr[1]
-			mat_calc(input, l1, l2)
+	for epoch in 0..<MAXXX {
+		if true {
+			correct: int
+			for i in 0..<1000 {  // test on first 1000 images
+				input.data = imgdata[28*28*i:][:28*28]
+				mat_calc(input, l1, l2, l3)
+				predicted := argmax(l3.l)
+				actual := argmax({data=lbldata[i*10:][:10], rows=1, cols=10})
+				if predicted == actual do correct += 1
+			}
+			fmt.printfln("epoch %v accuracy: %.1f%%", epoch, f32(correct)/10.0)
+		}
+		for tr_idx in 0..<IMGS {
+			if tr_idx%5000==0 {
+				fmt.println(tr_idx,IMGS)
+			}
+			// input.data[0] = tr[0]
+			// input.data[1] = tr[1]
+			input.data = imgdata[28*28*tr_idx:][:28*28]
+			mat_calc(input, l1, l2, l3)
 
-			target.data[0] = tr[2]
-			layer_dlast(&l2, &l1, target)
+			// target.data[0] = tr[2]
+			target.data = lbldata[tr_idx*10:][:10]
+
+			layer_dlast(&l3, &l2, target)
+			layer_d(&l2, &l3, l1.l)
 			layer_d(&l1, &l2, input)
 
 			layer_learn(&l1)
 			layer_learn(&l2)
+			layer_learn(&l3)
+
+			// after ONE training step, print this:
+// fmt.println("l1.dw[0]:", l1.dw.data[0])
+// fmt.println("l2.dw[0]:", l2.dw.data[0])
+// fmt.println("l3.dw[0]:", l3.dw.data[0])
+// fmt.println("l3.l:", l3.l.data)
+// fmt.println("target:", target.data)
+
+// 			return
 		}
 	}
 
-	for tr in TRAIN {
-		a := mat_make(1, 2)
-		a.data[0] = tr[0]
-		a.data[1] = tr[1]
-		mat_calc(a, l1, l2)
-		fmt.println(tr, l2.l.data[0])
-	}
+	fmt.println("Finished!")
+	// for tr_idx in 0..<IMGS {
+	// 	a := mat_make(1, 2)
+	// 	a.data[0] = tr[0]
+	// 	a.data[1] = tr[1]
+	// 	mat_calc(a, l1, l2, l3)
+	// 	fmt.println(tr, l3.l.data[0])
+	// }
 }
 
-layer :: proc(a, w, b, l: Matrix) {
+layer :: proc(a, w, b, z, l: Matrix) {
 	assert_eq(l.rows, b.rows); assert_eq(l.cols, b.cols)
 
 	mat_mul(a, w, l)
 	mat_add(l, b, l)
+	mat_copy(l, z)
 	mat_act(l)
 	return
 }
 
-loss :: proc(l1, l2: Layer, a: Matrix) -> (total_cost: f32) {
-	assert_eq(a.rows, 1); assert_eq(a.cols, 2)
-	assert_eq(l1.l.rows, l1.b.rows); assert_eq(l1.l.cols, l1.b.cols)
-	assert_eq(l2.l.rows, l2.b.rows); assert_eq(l2.l.cols, l2.b.cols)
+layer2 :: proc(a, w, b, z, l: Matrix) {
+	assert_eq(l.rows, b.rows); assert_eq(l.cols, b.cols)
 
-	for tr in TRAIN {
-		a.data[0] = tr[0]; a.data[1] = tr[1]
-		mat_calc(a, l1, l2)
-		total_cost += cost(tr[2], l2.l.data[0])  // safe
-	}
+	mat_mul(a, w, l)
+	mat_add(l, b, l)
+	mat_copy(l, z)
+	// mat_act(l)
+	softmax(l)
 	return
 }
 
-cost :: proc(a, b: f32) -> f32 {
-	return (a-b)*(a-b)
-}
+// loss :: proc(l1, l2, l3: Layer, a: Matrix) -> (total_cost: f32) {
+// 	// assert_eq(a.rows, 1); assert_eq(a.cols, 2)
+// 	assert_eq(l1.l.rows, l1.b.rows); assert_eq(l1.l.cols, l1.b.cols)
+// 	assert_eq(l2.l.rows, l2.b.rows); assert_eq(l2.l.cols, l2.b.cols)
+// 	assert_eq(l3.l.rows, l3.b.rows); assert_eq(l3.l.cols, l3.b.cols)
 
-cost_derive :: proc(a, b: f32) -> f32 {
-	return 2*(a-b)
-}
+// 	for tr in 0..<IMGS {
+// 		// a.data[0] = tr[0]; a.data[1] = tr[1]
+// 		// a.data = imgdata[28*28*tr_idx:][:28*28]
+// 		mat_calc(a, l1, l2, l3)
+// 		// total_cost += cost(tr[2], l3.l.data[0])  // safe
+// 		// total_cost += cross_entropy(l3.l, )
+// 	}
+// 	return
+// }
 
-mat_calc :: proc(a: Matrix, l1, l2: Layer) {
+// cost :: proc(a, b: f32) -> f32 {
+// 	return (a-b)*(a-b)
+// }
+
+// cost_derive :: proc(a, b: f32) -> f32 {
+// 	return 2*(a-b)
+// }
+
+mat_calc :: proc(a: Matrix, l1, l2, l3: Layer) {
 	assert_eq(l1.l.rows, l1.b.rows); assert_eq(l1.l.cols, l1.b.cols)
 	assert_eq(l2.l.rows, l2.b.rows); assert_eq(l2.l.cols, l2.b.cols)
+	assert_eq(l3.l.rows, l3.b.rows); assert_eq(l3.l.cols, l3.b.cols)
 
-	layer(a, l1.w, l1.b, l1.l)
-	layer(l1.l, l2.w, l2.b, l2.l)
+	layer(a, l1.w, l1.b, l1.z, l1.l)
+	layer(l1.l, l2.w, l2.b, l2.z, l2.l)
+	layer2(l2.l, l3.w, l3.b, l3.z, l3.l)
 }
 
 mat_act :: proc(a: Matrix) {
 	for &d in a.data {
-		d = activation(d)
+		d = relu(d)
 	}
 }
 
-mat_rand :: proc(a: Matrix) {
-	for &d in a.data {
-		d = rand.float32()
-	}
+// mat_rand :: proc(a: Matrix) {
+// 	for &d in a.data {
+// 		// d = rand.float32()
+// 		d = rand.float32()*2 - 1
+// 	}
+// }
+
+// activation :: proc(x: f32) -> f32 {
+// 	return 1/(1+math.exp(-x))
+// }
+
+// activation_derive :: proc(x: f32) -> f32 {
+// 	return activation(x)*(1-activation(x))
+// }
+
+// relu :: proc(x: f32) -> f32 {
+//     return max(0, x)
+// }
+
+// relu_derive :: proc(x: f32) -> f32 {
+//     return x > 0 ? 1 : 0  // 1 if positive, 0 if negative
+// }
+
+relu :: proc(x: f32) -> f32 {
+    return x > 0 ? x : 0.01 * x  // leaky!!
 }
 
-activation :: proc(x: f32) -> f32 {
-	return 1/(1+math.exp(-x))
+relu_derive :: proc(x: f32) -> f32 {
+    return x > 0 ? 1 : 0.01  // never fully zero!!
 }
 
-activation_derive :: proc(x: f32) -> f32 {
-	return activation(x)*(1-activation(x))
+// last activation layer
+softmax :: proc(a: Matrix) {
+    // find max for numerical stability (prevents exp() overflow)
+    max: f32 = a.data[0]
+    for d in a.data do max = math.max(max, d)
+
+    sum: f32
+    for &d in a.data {
+        d = math.exp(d - max)
+        sum += d
+    }
+    for &d in a.data do d /= sum
+}
+
+// loss function
+cross_entropy :: proc(output, target: Matrix) -> f32 {
+    loss: f32
+    for i in 0..<output.cols {
+        loss -= target.data[i] * math.ln(output.data[i] + 1e-7)
+    }
+    return loss
+}
+
+argmax :: proc(a: Matrix) -> int {
+    best_idx: int
+    best_val := a.data[0]
+    for d, i in a.data {
+        if d > best_val {
+            best_val = d
+            best_idx = i
+        }
+    }
+    return best_idx
 }

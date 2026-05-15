@@ -1,6 +1,8 @@
 #+vet explicit-allocators
 package main
 // note: claude-generated /shrug
+import "core:math/rand"
+import "core:math"
 
 import "core:fmt"
 
@@ -26,10 +28,19 @@ mat_make :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
 	}
 }
 
-mat_make_random :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
-	c := mat_make(rows, cols, allocator)
-	mat_rand(c)
-	return c
+// mat_make_random :: proc(rows, cols: int, allocator := context.allocator) -> Matrix {
+// 	c := mat_make(rows, cols, allocator)
+// 	mat_rand(c)
+// 	return c
+// }
+
+mat_make_random :: proc(inputs, outputs: int, allocator := context.allocator) -> Matrix {
+    m := mat_make(inputs, outputs, allocator)
+    scale := math.sqrt(2.0 / f32(inputs))  // He initialization for ReLU
+    for &d in m.data {
+        d = (rand.float32()*2 - 1) * scale
+    }
+    return m
 }
 
 mat_make_from :: proc(m: Matrix, allocator := context.allocator) -> Matrix {
