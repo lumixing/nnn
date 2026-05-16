@@ -169,7 +169,6 @@ layer :: proc(a, w, b, z, l: Matrix) #no_bounds_check {
 	mat_add(l, b, l)
 	mat_copy(l, z)
 	mat_act(l)
-	return
 }
 
 layer2 :: proc(a, w, b, z, l: Matrix) #no_bounds_check {
@@ -180,7 +179,6 @@ layer2 :: proc(a, w, b, z, l: Matrix) #no_bounds_check {
 	mat_copy(l, z)
 	// mat_act(l)
 	softmax(l)
-	return
 }
 
 mat_calc :: proc(a: Matrix, l1, l2, l3: Layer) #no_bounds_check {
