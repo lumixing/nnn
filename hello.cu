@@ -27,6 +27,39 @@ Layer make_layer(int inputs, int outputs) {
 char *read_file(const char *path, long *out_size);
 void mat_calc(mat a, Layer l1, Layer l2, Layer l3, float *max, float *sum);
 
+#define BATCH 32
+
+void layer_dlast(Layer l, Layer lprev, mat target) {
+	mat_sub(l.l, target, l.dl);
+	mat_copy(l.dl, l.dz);
+	mat_dot(mat_transpose(lprev.l), l.dz, l.dw);
+	mat_copy(l.dz, l.db);
+}
+
+__device__ float relu_derive(float x) {
+    return x > 0 ? 1 : 0.01;
+}
+
+__global__ void layer_d_actder(float *dz, float *dl, float *z, int dz_cols) {
+	for (int i = 0; i < dz_cols; i++) {
+		dz[i] = dl[i] * relu_derive(z[i]);
+	}
+}
+
+void layer_d(Layer l, Layer lnext, mat input) {
+	mat_dot(lnext.dz, mat_transpose(lnext.w), l.dl);
+	layer_d_actder<<<1>>>(l.dz.data, l.dl.data, l.z.data, l.dz.cols);
+	mat_dot(mat_transpose(input), l.dz, l.dw);
+	mat_copy(l.dz, l.db);
+}
+
+void layer_learn(Layer l) {
+	mat_scale(l.dw, LR, l.dw);
+	mat_scale(l.db, LR, l.db);
+	mat_sub(l.w, l.dw, l.w);
+	mat_sub(l.b, l.db, l.b);
+}
+
 int main() {
 	srand(time(NULL));
 
@@ -63,7 +96,7 @@ int main() {
 	Layer l2 = make_layer(128, 64);
 	Layer l3 = make_layer(64, OUTPUTS);
 
-	mat input = mat_make(VEC, INPUTS);
+	mat input = mat_make(BATCH, INPUTS);
 	mat target = mat_make(VEC, OUTPUTS);
 
 	// mat a = mat_make(2, 3);
@@ -85,14 +118,23 @@ int main() {
 
 	for (int epoch = 0; epoch < 100; epoch++) {
 		printf("Epoch %d\n", epoch);
-		for (int tr_idx = 0; tr_idx < IMGS; tr_idx++) {
+		for (int tr_idx = 0; tr_idx < IMGS; tr_idx += BATCH) {
 			if (tr_idx % 1000 == 0) {
 				printf("%d/%d\n", tr_idx, IMGS);
 			}
 
 			input.data = inputs+(28*28*tr_idx);
 			mat_calc(input, l1, l2, l3, max, sum);
-			cudaDeviceSynchronize();
+
+			layer_dlast(l3, l2, target);
+			layer_d(l2, l3, l1.l);
+			layer_d(l1, l2, input);
+
+			layer_learn(l1);
+			layer_learn(l2);
+			layer_learn(l3);
+
+			// cudaDeviceSynchronize();
 		}
 	}
 
@@ -117,9 +159,13 @@ char *read_file(const char *path, long *out_size) {
 }
 
 void layer(mat a, Layer l) {
-	mat_dot(a, l.w, l.l);
-	mat_add(l.l, l.b, l.l);
+	// 1x784*784x64=1x64
+	mat_dot(a, l.w, l.l);//32x784*784x64=32x128
+	// 1x64+1x64=1x64
+	mat_add(l.l, l.b, l.l);//32x128+1x64=???
+	// 1x64=1x64
 	mat_copy(l.l, l.z);
+	// 1x64
 	mat_act(l.l);
 }
 

@@ -8,10 +8,16 @@
 #define THREADS 256
 #define MATCHE(m) ((MATLEN(m)+THREADS-1)/THREADS),256
 
+#define LR 0.001
+
 typedef struct {
 	float *data;
 	int rows, cols;
 } mat;
+
+mat mat_transpose(mat a) {
+	return {a.data, a.cols, a.rows};
+}
 
 mat mat_make(int rows, int cols) {
 	mat c;
@@ -108,6 +114,28 @@ __global__ void kmat_add(float *a, float *b, float *c, int s) {
 
 void mat_add(mat a, mat b, mat c) {
 	kmat_add<<<MATCHE(a)>>>(a.data, b.data, c.data, MATLEN(a));
+}
+
+__global__ void kmat_sub(float *a, float *b, float *c, int s) {
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= s) return;
+
+	c[i] = a[i] - b[i];
+}
+
+void mat_sub(mat a, mat b, mat c) {
+	kmat_sub<<<MATCHE(a)>>>(a.data, b.data, c.data, MATLEN(a));
+}
+
+__global__ void kmat_scale(float *a, float b, float *c, int s) {
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= s) return;
+
+	c[i] = a[i] * b;
+}
+
+void mat_scale(mat a, float b, mat c) {
+	kmat_scale<<<MATCHE(a)>>>(a.data, b, c.data, MATLEN(a));
 }
 
 __global__ void kmat_dot(float *a, float *b, float *c, int a_rows, int a_cols, int b_cols) {
