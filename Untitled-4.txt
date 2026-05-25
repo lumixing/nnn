@@ -1,0 +1,58 @@
+∂cost/∂a2 = 2(a2 - target)                         // derivative of x²
+∂cost/∂z2 = ∂cost/∂a2 ⊙ (a2 ⊙ (1 - a2))     // hadamard, sigmoid'
+∂cost/∂w2 = a1ᵀ · ∂cost/∂z2                       // · =  ✅
+∂cost/∂b2 = ∂cost/∂z2                                    // just 1, no mult
+
+∂cost/∂a1 = ∂cost/∂z2 · w2ᵀ                       // · =  ✅
+∂cost/∂z1 = ∂cost/∂a1 ⊙ (a1 ⊙ (1 - a1))     // hadamard, sigmoid'
+∂cost/∂w1 = aᵀ · ∂cost/∂z1                        // · =  ✅
+∂cost/∂b1 = ∂cost/∂z1                                    // just 1, no mult
+
+L(a,w,b) = sig(a·w+b)
+L(L(L(IN,w1,b1),w2,b2),w3,b3)
+cost = loss(L(L(L(IN,w1,b1),w2,b2),w3,b3),EXP)
+cost = (sig(sig(sig(IN·w1+b1)·w2+b2)·w3+b3)-EXP)^2
+
+z1 = IN·w1+b1
+l1 = sig(z1)
+z2 = l1·w2+b2
+l2 = sig(z2)
+z3 = l2·w3+b3
+l3 = sig(z3)
+cost = (l3-EXP)^2
+
+cost/l3 = 2(l3-EXP)
+cost/z3 = cost/l3 * l3*(1-l3)
+cost/w3 = cost/z3 * l2
+cost/b3 = cost/z3
+
+cost/l2 = cost/z3 * w3
+cost/z2 = cost/l2 * l2*(1-l2)
+cost/w2 = cost/z2 * l1
+cost/b2 = cost/z2
+
+cost/l1 = cost/z2 * w2
+cost/z1 = cost/l1 * l1*(1-l1)
+cost/w1 = cost/z1 * IN
+cost/b1 = cost/z1
+
+cost = loss(L(L(IN,w1,b1),w2,b2),EXP)
+cost = (sig(sig(IN*w1+b1)*w2+b2)-EXP)^2
+
+z1   = IN*w1+b1
+a1   = sig(z1)
+z2   = a1*w2+b2
+a2   = sig(z2)
+cost = (a2-EXP)^2
+
+cost/a2 = 2(a2-EXP)
+
+a2/z2   = cost/a2 * (sig(z2)*(1-sig(z2)))
+a2/z2   = cost/a2 * (a2*(1-a2))
+z2/w2   = a2/z2 * a1
+z2/b2   = a2/z2 * 1
+
+a1/z1   = z2/b2 * (sig(z1)*(1-sig(z1)))
+a1/z1   = z2/b2 * (a1*(1-a1))
+z1/w1   = a1/z1 * IN
+z1/b1   = a1/z1 * 1

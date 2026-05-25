@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <cublas_v2.h>
 
 #define MATLEN(m) (m.rows*m.cols)
 #define MATGET(m, r, c) (m.data[r*m.cols+c])
@@ -40,12 +41,12 @@ mat mat_make_random(int rows, int cols) {
 	return c;
 }
 
-void mat_copy(mat src, mat dst) {
-	// for (int i = 0; i < MATLEN(src); i++) {
-	// 	dst.data[i] = src.data[i];
-	// }
-	cudaMemcpy(dst.data, src.data, MATLEN(src)*sizeof(float), cudaMemcpyDeviceToDevice);
-}
+// void mat_copy(mat src, mat dst) {
+// 	// for (int i = 0; i < MATLEN(src); i++) {
+// 	// 	dst.data[i] = src.data[i];
+// 	// }
+// 	cudaMemcpy(dst.data, src.data, MATLEN(src)*sizeof(float), cudaMemcpyDeviceToDevice);
+// }
 
 __device__ float act(float x) {  // leaky relu
 	return x > 0 ? x : 0.01 * x;
@@ -90,19 +91,41 @@ void mat_softmax(mat a, float *max, float *sum) {
 	// for (int i = 0; i < MATLEN(a); i++) {
 	// 	max = fmaxf(max, a.data[i]);
 	// }
-	kmat_softmax_max<<<1>>>(a.data, MATLEN(a), max);
+	kmat_softmax_max<<<1,1>>>(a.data, MATLEN(a), max);
 	
 	// float sum = 0;
 	// for (int i = 0; i < MATLEN(a); i++) {
 	// 	a.data[i] = expf(a.data[i] - max);
 	// 	sum += a.data[i];
 	// }
-	kmat_softmax_sum<<<1>>>(a.data, MATLEN(a), max, sum);
+	kmat_softmax_sum<<<1,1>>>(a.data, MATLEN(a), max, sum);
 
 	// for (int i = 0; i < MATLEN(a); i++) {
 	// 	a.data[i] /= sum;
 	// }
-	kmat_softmax_div<<<1>>>(a.data, MATLEN(a), sum);
+	kmat_softmax_div<<<1,1>>>(a.data, MATLEN(a), sum);
+}
+
+__global__ void kmat_softmax2(float *a, int s) {
+	float max = a[0];
+	for (int i = 0; i < s; i++) {
+		max = fmaxf(max, a[i]);
+	}
+	float sum = 0;
+	for (int i = 0; i < s; i++) {
+		a[i] = expf(a[i] - max);
+		sum += a[i];
+	}
+	for (int i = 0; i < s; i++) {
+		a[i] /= sum;
+	}
+}
+
+// ik this is slow (also hardcoded bc last layer)
+void mat_softmax2(mat a, float *max, float *sum) {
+	for (int i = 0; i < MATLEN(a); i += 256) {
+		kmat_softmax2<<<1, 1>>>(a.data+i, 10);
+	}
 }
 
 __global__ void kmat_add(float *a, float *b, float *c, int s) {
@@ -116,6 +139,13 @@ void mat_add(mat a, mat b, mat c) {
 	kmat_add<<<MATCHE(a)>>>(a.data, b.data, c.data, MATLEN(a));
 }
 
+__global__ void kmat_add_broadcast(float *a, float *b, float *c, int rows, int cols) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= rows * cols) return;
+    int col = i % cols;      // which column = which bias element
+    c[i] = a[i] + b[col];   // b repeats every row!!
+}
+
 __global__ void kmat_sub(float *a, float *b, float *c, int s) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= s) return;
@@ -125,6 +155,17 @@ __global__ void kmat_sub(float *a, float *b, float *c, int s) {
 
 void mat_sub(mat a, mat b, mat c) {
 	kmat_sub<<<MATCHE(a)>>>(a.data, b.data, c.data, MATLEN(a));
+}
+
+__global__ void kmat_copy(float *a, float *c, int s) {
+	int i = threadIdx.x + blockIdx.x * blockDim.x;
+	if (i >= s) return;
+
+	c[i] = a[i];
+}
+
+void mat_copy(mat a, mat c) {
+	kmat_copy<<<MATCHE(a)>>>(a.data, c.data, MATLEN(a));
 }
 
 __global__ void kmat_scale(float *a, float b, float *c, int s) {
@@ -151,8 +192,21 @@ __global__ void kmat_dot(float *a, float *b, float *c, int a_rows, int a_cols, i
 	c[b_cols*i+j] = sum;
 }
 
+extern cublasHandle_t handle;
+
 void mat_dot(mat a, mat b, mat c) {
 	dim3 block(16, 16);
 	dim3 grid((b.cols + 15) / 16, (a.rows + 15) / 16);
 	kmat_dot<<<grid, block>>>(a.data, b.data, c.data, a.rows, a.cols, b.cols);
+
+	// float alpha = 1;
+	// float beta = 0;
+	// cublasSgemm(handle,
+	// 	CUBLAS_OP_N, CUBLAS_OP_N,
+	// 	b.cols, a.rows, a.cols,
+	// 	&alpha,
+	// 	b.data, b.cols,
+	// 	a.data, a.cols,
+	// 	&beta,
+	// 	c.data, b.cols);
 }
