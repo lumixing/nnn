@@ -5,12 +5,13 @@
 #define INPUTS 28*28
 #define OUTPUTS 10
 #define IMGS 60000
-#define BATCH 256
+#define BATCH 1024
 
 
 typedef struct {
 	mat w, b, z, l;
 	mat dw, db, dz, dl;
+	mat wT, lT;
 } Layer;
 
 Layer make_layer(int inputs, int outputs) {
@@ -23,6 +24,9 @@ Layer make_layer(int inputs, int outputs) {
 	l.db = mat_make(1, outputs);
 	l.dz = mat_make(BATCH, outputs);
 	l.dl = mat_make(BATCH, outputs);
+
+	l.wT = mat_make(outputs, inputs);
+	l.lT = mat_make(outputs, BATCH);
 	return l;
 }
 
@@ -43,13 +47,13 @@ void mat_sum_rows(mat dz, mat db) {
     kmat_sum_rows<<<(dz.cols+255)/256, 256>>>(dz.data, db.data, dz.rows, dz.cols);
 }
 
-void layer_dlast(Layer l, Layer lprev, mat target) {
-	mat_sub(l.l, target, l.dl);
-	mat_copy(l.dl, l.dz);
-	mat_dot(mat_transpose(lprev.l), l.dz, l.dw);
-	// mat_copy(l.dz, l.db);
-	mat_sum_rows(l.dz, l.db);
-}
+// void layer_dlast(Layer l, Layer lprev, mat target) {
+// 	mat_sub(l.l, target, l.dl);
+// 	mat_copy(l.dl, l.dz);
+// 	mat_dot(mat_transpose(lprev.l), l.dz, l.dw);
+// 	// mat_copy(l.dz, l.db);
+// 	mat_sum_rows(l.dz, l.db);
+// }
 
 __device__ float relu_derive(float x) {
     return x > 0 ? 1 : 0.01;
@@ -61,12 +65,29 @@ __global__ void layer_d_actder(float *dz, float *dl, float *z, int s) {
 	dz[i] = dl[i] * relu_derive(z[i]);
 }
 
+// void layer_d(Layer l, Layer lnext, mat input) {
+// 	mat_dot(lnext.dz, mat_transpose(lnext.w), l.dl);
+// 	layer_d_actder<<<MATCHE(l.dz)>>>(l.dz.data, l.dl.data, l.z.data, MATLEN(l.dz));
+// 	mat_dot(mat_transpose(input), l.dz, l.dw);
+// 	// mat_copy(l.dz, l.db);
+// 	mat_sum_rows(l.dz, l.db);
+// }
+
+void layer_dlast(Layer l, Layer lprev, mat target) {
+    mat_sub(l.l, target, l.dl);
+    mat_copy(l.dl, l.dz);
+    mat_transpose_into(lprev.l, lprev.lT);      // ← transpose first
+    mat_dot(lprev.lT, l.dz, l.dw);             // ← then use buffer
+    mat_sum_rows(l.dz, l.db);
+}
+
 void layer_d(Layer l, Layer lnext, mat input) {
-	mat_dot(lnext.dz, mat_transpose(lnext.w), l.dl);
-	layer_d_actder<<<MATCHE(l.dz)>>>(l.dz.data, l.dl.data, l.z.data, MATLEN(l.dz));
-	mat_dot(mat_transpose(input), l.dz, l.dw);
-	// mat_copy(l.dz, l.db);
-	mat_sum_rows(l.dz, l.db);
+    mat_transpose_into(lnext.w, lnext.wT);
+    mat_dot(lnext.dz, lnext.wT, l.dl);
+    layer_d_actder<<<MATCHE(l.dz)>>>(l.dz.data, l.dl.data, l.z.data, MATLEN(l.dz));
+    // need a transpose buffer for input too — pass it in or pre-alloc
+    mat_dot(input, l.dz, l.dw);
+    mat_sum_rows(l.dz, l.db);
 }
 
 void layer_learn(Layer l) {
@@ -76,11 +97,11 @@ void layer_learn(Layer l) {
 	mat_sub(l.b, l.db, l.b);
 }
 
-cublasHandle_t handle;
+// cublasHandle_t handle;
 
 int main() {
 	srand(time(NULL));
-	cublasCreate(&handle);
+	// cublasCreate(&handle);
 
 	// todo: skip header initially not later
 	long images_size;
@@ -92,7 +113,7 @@ int main() {
 	float *inputs;
 	cudaMallocManaged(&inputs, inputs_size*sizeof(float));
 	for (int i = 0; i < inputs_size; i++) {
-		inputs[i] = (float)(images_data[i])/255.;
+		inputs[i] = (float)((unsigned char)images_data[i])/255.;
 	}
 	free(images_data-16);
 
@@ -137,6 +158,8 @@ int main() {
 	cudaMallocManaged(&max, sizeof(float));
 	cudaMallocManaged(&sum, sizeof(float));
 
+	mat inputT = mat_make(INPUTS, BATCH);
+
 	for (int epoch = 0; epoch < 100; epoch++) {
 		printf("Epoch %d\n", epoch);
 		for (int tr_idx = 0; tr_idx < IMGS; tr_idx += BATCH) {
@@ -146,19 +169,21 @@ int main() {
 
 			input.data = inputs+(28*28*tr_idx);
 			mat_calc(input, l1, l2, l3, max, sum);
+			// cudaDeviceSynchronize();
+
+			mat_transpose_into(input, inputT);
 
 			target.data = outputs+(tr_idx*10);
-
 			layer_dlast(l3, l2, target);
 			layer_d(l2, l3, l1.l);
-			layer_d(l1, l2, input);
+			layer_d(l1, l2, inputT);
+			// cudaDeviceSynchronize();
 
 			layer_learn(l1);
 			layer_learn(l2);
 			layer_learn(l3);
 		}
 
-		// cudaDeviceSynchronize();
 
 		{
 			int correct = 0;
@@ -226,7 +251,7 @@ void layer2(mat a, Layer l, float *max, float *sum) {
 	mat_dot(a, l.w, l.l);
 	// mat_add(l.l, l.b, l.l);
 	kmat_add_broadcast<<<MATCHE(l.l)>>>(l.l.data, l.b.data, l.l.data, l.l.rows, l.l.cols);
-	// mat_copy(l.l, l.z);
+	mat_copy(l.l, l.z);
 	// 256x10
 	mat_softmax2(l.l, max, sum);
 }

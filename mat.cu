@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include <cublas_v2.h>
+// #include <cublas_v2.h>
 
 #define MATLEN(m) (m.rows*m.cols)
 #define MATGET(m, r, c) (m.data[r*m.cols+c])
@@ -16,8 +16,11 @@ typedef struct {
 	int rows, cols;
 } mat;
 
-mat mat_transpose(mat a) {
-	return {a.data, a.cols, a.rows};
+__global__ void kmat_transpose(float *a, float *c, int rows, int cols) {
+    int i = threadIdx.y + blockIdx.y * blockDim.y;
+    int j = threadIdx.x + blockIdx.x * blockDim.x;
+    if (i >= rows || j >= cols) return;
+    c[j * rows + i] = a[i * cols + j];
 }
 
 mat mat_make(int rows, int cols) {
@@ -26,6 +29,20 @@ mat mat_make(int rows, int cols) {
 	c.rows = rows;
 	c.cols = cols;
 	return c;
+}
+
+mat mat_transpose(mat a) {
+    mat t = mat_make(a.cols, a.rows);
+    dim3 block(16, 16);
+    dim3 grid((a.cols + 15) / 16, (a.rows + 15) / 16);
+    kmat_transpose<<<grid, block>>>(a.data, t.data, a.rows, a.cols);
+    return t;
+}
+
+void mat_transpose_into(mat a, mat out) {
+    dim3 block(16, 16);
+    dim3 grid((a.cols + 15) / 16, (a.rows + 15) / 16);
+    kmat_transpose<<<grid, block>>>(a.data, out.data, a.rows, a.cols);
 }
 
 float randf() {
@@ -123,8 +140,8 @@ __global__ void kmat_softmax2(float *a, int s) {
 
 // ik this is slow (also hardcoded bc last layer)
 void mat_softmax2(mat a, float *max, float *sum) {
-	for (int i = 0; i < MATLEN(a); i += 256) {
-		kmat_softmax2<<<1, 1>>>(a.data+i, 10);
+	for (int i = 0; i < MATLEN(a); i += a.cols/*255*/) {
+		kmat_softmax2<<<1, 1>>>(a.data+i, a.cols);
 	}
 }
 
@@ -157,11 +174,11 @@ void mat_sub(mat a, mat b, mat c) {
 	kmat_sub<<<MATCHE(a)>>>(a.data, b.data, c.data, MATLEN(a));
 }
 
-__global__ void kmat_copy(float *a, float *c, int s) {
+__global__ void kmat_copy(float *src, float *dst, int s) {
 	int i = threadIdx.x + blockIdx.x * blockDim.x;
 	if (i >= s) return;
 
-	c[i] = a[i];
+	dst[i] = src[i];
 }
 
 void mat_copy(mat a, mat c) {
@@ -192,7 +209,7 @@ __global__ void kmat_dot(float *a, float *b, float *c, int a_rows, int a_cols, i
 	c[b_cols*i+j] = sum;
 }
 
-extern cublasHandle_t handle;
+// extern cublasHandle_t handle;
 
 void mat_dot(mat a, mat b, mat c) {
 	dim3 block(16, 16);
